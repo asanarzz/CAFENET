@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.cafemanager.app.AppViewModel
 import com.cafemanager.app.PasswordDraft
 import com.cafemanager.app.R
+import com.cafemanager.app.data.AppDatabase
 import com.cafemanager.app.data.Customer
 import com.cafemanager.app.util.fa
 import com.cafemanager.app.util.normDigits
@@ -45,6 +46,11 @@ fun CustomersScreen(vm: AppViewModel, onOpen: (Long) -> Unit, modifier: Modifier
     val list by vm.customers.collectAsState()
     val q by vm.query.collectAsState()
     var sort by remember { mutableStateOf(0) }
+    // شمارهٔ ثابت هر مشتری = ترتیب ثبت (اولین مشتری ۱)؛ با جستجو یا مرتب‌سازی عوض نمی‌شود
+    val ctx = LocalContext.current
+    val all by remember { AppDatabase.get(ctx).customers().search("") }.collectAsState(emptyList())
+    val numbers = remember(all) { all.sortedBy { it.id }.mapIndexed { i, c -> c.id to i + 1 }.toMap() }
+    val now = System.currentTimeMillis()
     val sorts = listOf("جدیدترین", "قدیمی‌ترین", "الفبا (الف تا ی)", "الفبا (ی تا الف)")
     val shown = when (sort) {
         0 -> list.sortedByDescending { it.id }
@@ -54,7 +60,11 @@ fun CustomersScreen(vm: AppViewModel, onOpen: (Long) -> Unit, modifier: Modifier
     }
 
     Column(modifier.padding(horizontal = 16.dp)) {
-        SortMenu(sorts, sort) { sort = it }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            ImportCustomersButton()
+            Box(Modifier.weight(1f)) { SortMenu(sorts, sort) { sort = it } }
+        }
+        Text("تعداد کل مشتریان: ${all.size.fa()}", style = MaterialTheme.typography.titleSmall)
         OutlinedTextField(
             value = q, onValueChange = vm::setQuery,
             label = { Text("جستجو (نام، موبایل، کد ملی)") },
@@ -72,10 +82,22 @@ fun CustomersScreen(vm: AppViewModel, onOpen: (Long) -> Unit, modifier: Modifier
                 contentPadding = PaddingValues(bottom = 88.dp)
             ) {
                 items(shown, key = { it.id }) { c ->
-                    Card(onClick = { onOpen(c.id) }, modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text("${c.firstName} ${c.lastName}", style = MaterialTheme.typography.titleMedium)
-                            if (c.mobile.isNotBlank()) Text(c.mobile.fa(), style = MaterialTheme.typography.bodyMedium)
+                    // مشتری‌ای که کمتر از ۲۴ ساعت از ثبتش گذشته رنگ متفاوت دارد
+                    val isNew = now - c.createdAt < 24 * 60 * 60 * 1000L
+                    Card(
+                        onClick = { onOpen(c.id) },
+                        colors = if (isNew) CardDefaults.cardColors(containerColor = Color(0xFF2E9E5B).copy(alpha = 0.25f))
+                        else CardDefaults.cardColors(),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("${(numbers[c.id] ?: 0).fa()}.", style = MaterialTheme.typography.titleMedium)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("${c.firstName} ${c.lastName}", style = MaterialTheme.typography.titleMedium)
+                                if (c.mobile.isNotBlank()) Text(c.mobile.fa(), style = MaterialTheme.typography.bodyMedium)
+                            }
+                            if (isNew) Text("جدید", style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }
